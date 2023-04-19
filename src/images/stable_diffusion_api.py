@@ -72,7 +72,7 @@ class StableDiffusionApi:
         else:
             self.base_url = 'https://stablediffusionapi.com/api/v3/'
 
-        print(INIT_LABEL.format(key=self.key))
+        # print(INIT_LABEL.format(key=self.key))
 
     def body_compose(self, config: StableDiffusionApiModelConfig, **info):
         body = {

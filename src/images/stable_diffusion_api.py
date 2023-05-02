@@ -61,11 +61,12 @@ def formatter(f):
 
 
 class StableDiffusionApi:
-    def __init__(self, model: Model = None, save_seed=False, image_formatter=lambda p: p) -> None:
+    def __init__(self, model: Model = None, save_seed=False, image_formatter=lambda p: p, prompt_suffix = None) -> None:
         self.key = os.getenv("SDAPI_API_KEY")
         self.model_id = model
         self.save_seed = save_seed
         self.output_formatter = image_formatter
+        self.prompt_suffix = prompt_suffix
 
         if model:
             self.base_url = 'https://stablediffusionapi.com/api/v3/dreambooth/'
@@ -74,10 +75,11 @@ class StableDiffusionApi:
 
         # print(INIT_LABEL.format(key=self.key))
 
-    def body_compose(self, config: StableDiffusionApiModelConfig, **info):
+    def body_compose(self, config: StableDiffusionApiModelConfig, prompt, **info):
         body = {
             ** config,
             ** info,
+            "prompt": prompt if not self.prompt_suffix else f'{self.prompt_suffix} {prompt}',
             "webhook": None,
             'key': self.key
         }
@@ -130,8 +132,8 @@ class StableDiffusionApi:
         :param str neg: Items you don't want in the image 
         :param StableDiffusionApiModelConfig config: Your hyperparams for the generation
         """
-        body = self.body_compose(config, prompt=prompt, negative_prompt=neg)
-        images = self.request('text2img', body)
+        body = self.body_compose(config, prompt, negative_prompt=neg)
+        images = self.request('text2img' if not self.model_id else '', body)
 
         return images
 
@@ -147,7 +149,7 @@ class StableDiffusionApi:
 
         body = self.body_compose(
             config,
-            prompt=prompt,
+            prompt,
             negative_prompt=neg,
             init_image=image,
             mask_image=mask

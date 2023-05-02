@@ -1,6 +1,6 @@
 from functools import partial
 import re
-
+from dataclasses import dataclass
 ########################################################
 #                                                      #
 #          Find Entities In The Sentences              #
@@ -9,12 +9,27 @@ import re
 
 ENTITIES = """\
 Here is a text in which you have to detect each entity which could be described physically. \
-All detected entity have to be things that could be impressed in a photo. They can't be abstract things.
+All detected entity have to be things that could be impressed in a photo. They can't be abstract things. \
   
 Text: {sentences}
 Entities (divided by commas):"""
 
 def entities_detection(model, sentences, prompt = ENTITIES):
+    entities : str = model.text2text(prompt.format(sentences = sentences))
+    
+    if entities.endswith('.'):
+        entities = entities[:-1]
+
+    return list(map(lambda x: x.strip().lower(),  entities.split(',')))
+
+
+ENTITIES = """\
+Here is a text in which you have to detect its main characters.
+  
+Text: {sentences}
+Characters (divided by commas):"""
+
+def characters_detection(model, sentences, prompt = ENTITIES):
     entities : str = model.text2text(prompt.format(sentences = sentences))
     
     if entities.endswith('.'):
@@ -75,53 +90,6 @@ def generate_entity_description(model, text, entity, prompt = GET_ENTITY_DESCRIP
 #                                                      #
 ########################################################
 
-# GET_IMAGE_DESCRIPTION = """It's a bot to traduce sentences of a children's story in image
-
-# Context: It's part of an app to generate illustrated text.\
-# So the bot receives some sentences of a text and the previos images description.\
-# It also receives a process to think step by step for generating the description of the image which illustrates the situation is described in those sentences.\
-# In addition it receives a very detail physical description for each entity in the sentences.\
-# It should use those physical description to describe the final image.\ 
-# In addition the bot receives some rules which they can't be broken for generating the description image.\
-# Finally it given us a very detail description of some photo of this situation.\
-
-# Process for generating the description step by step:
-# 1 - Read the sentences and find the four main elements needed to construct an image.\
-# The main action of the text, who performs it, who or what is the goal of this action and where it takes place.
-# 2 - Detect each entity who has been described into the sentences. 
-# 3 - Read the description of the previous image to compare the contexts of the situations,\
-# to understand how the transition from one image to the other occurs and to keep the description of the characters,\
-# if both sentences speak of the same people.
-# 4 - Decide whether the sentences speak of a continuation of the previous image or describe a different context.\
-# If the context is different, imagine the context.
-# 5 - Imagine a photo in which you can see how the protagonist of the detected action performs that action within\
-# the detected context and being consistent with the selected context of the step 3.
-# 6 - Being coherent with the selected context of the step 3, the physical entity descriptions and following the rules of generation that are marked.\
-# Generating a very detailed description of an image, based on the described structure,\
-# that can capture the full meaning of the situation described in the sentences. 
-
-# Rules:
-# - It have to be careful with the information in the sentence.\
-# In the final description, there don't have to be things which aren't in the sentences
-# - It have to be careful with how many people there are in the sentences.\
-# If the sentences talk only about one person, in the description can't be more than one
-# - It have to pay attention when the sentence talk only about a part of something.\
-# In that case the description should make emphasis in this part even it could omit the subject  
-# - It have to describe people with their backs turned whenever the context of the sentences allows it
-# - It must be very rigorous with the descriptions of the entities. They must match exactly with the descriptions provided.
-
-# Physical Entities Description:
-# {entities}
-
-# Previous Image Description:
-# {description}
-
-# Sentences:
-# {sentences}
-
-# Image Description:
-# """
-
 GET_IMAGE_DESCRIPTION = """Describe a image to represent the described situation in some sentences of a log text. \
 Give a very detail description of the image, explain me the position of each element into the image. \
 Don't talk me about styles, psychical descriptions, personality descriptions, clothing or face expressions. \
@@ -138,7 +106,66 @@ Photo in long plane of """
 
 
 def generate_image_description(model, sentences, log_text, prompt = GET_IMAGE_DESCRIPTION):
-    return 'Photo in long plane of ' + model.text2text(prompt.format(sentences = sentences, log_text  = log_text))
+    return model.text2text(prompt.format(sentences = sentences, log_text  = log_text))
+
+
+SUMMARY_DESCRIPTION = """Here is a very detail image description. But I only need one sentence witch describes the image. \
+So, give a sentences witch summaries the very detail image description.
+
+Very Detail Image Description: {description}
+Summary: """
+
+def summary_description(model, description):
+    summ = model.text2text(SUMMARY_DESCRIPTION.format(description = description))
+    if summ.endswith('.'):
+        return summ[:-1]
+    return summ
+
+
+SEMANTIC_IMAGE_DESCRIPTION = """\
+There is a book for children where there are some very nice stories. \
+Each story is divided into some pages of the book and \
+each page has some sentences of some story and \
+a picture to illustrate what happens in those sentences. \
+Below is one of the stories in the book, \
+physical descriptions of some things in this story and \
+the text on one of the pages of this story. 
+
+Story: 
+{story}
+
+Descriptions:
+{descriptions}
+
+Text on the pages:
+{text}
+
+Question: Write a very detailed description of the picture that should be on the same page as that text. \
+{question_details}
+
+Answer: A photo of""" 
+
+
+SEMANTIC_IMAGE_DESCRIPTION_EXTENSION = """\
+Describe the position of each element in the picture and they relation between them. \
+Also describe how is each element in the picture. \
+But don't talk about the artistic styles. \
+Only describe the composition of the picture and each its elements."""
+
+def build_semantic_description(model, story: str, descriptions: list, text: str, explain =False):
+    description = ''
+    for values in descriptions:
+        description += f' - {values}\n'
+
+    prompt = SEMANTIC_IMAGE_DESCRIPTION.format(
+        story=story, 
+        descriptions=description, 
+        text = text,
+        question_details = '' if not explain else SEMANTIC_IMAGE_DESCRIPTION_EXTENSION
+    )
+    g_prompt = model.text2text(prompt)
+
+    return g_prompt
 
 
 ########################################################
@@ -147,66 +174,16 @@ def generate_image_description(model, sentences, log_text, prompt = GET_IMAGE_DE
 #                                                      #
 ########################################################
 
+Formatter = """Drop each pronoun from the following text and enter the noun that is being replaced by the pronoun.
 
-FORMATTER = """It's a complement of the bot to traduce sentences of a children's story in image
+Text: {text}
 
-Context: There is a bot that receives some sentences of a children's story and return\
-the description of an image which show the frame of the story which is described in the sentences.\
-But the images' prompt need to have an specific structure,\
-so this complement is a function to transform the description to image prompt with a better structure.\
-This bot receives the sentences and the image description then return an image prompt with a better structure.\
-The structure of image prompt is defined like a text which start with a sentences of main image information,\
-action or topic where each noun are between parenthesis and after that there is a very detail image description   
+Transformed Text:"""
 
-Sentences:
-Once upon a time there was a young girl named Lily who loved to explore the forest near her home.
+def formatter(model, text):
+    new_text = model.text2text(Formatter.format(text))
 
-Description:
-Lily exploring the forest. Lily is standing in a clearing in the forest,\
-wearing a red dress and a matching red hat, her hands clasped in front of her in excitement.\
-She has a look of wonder on her face as she takes in the beauty of the trees around her.\
-The sun is shining down, casting a warm light through the leaves.\
-In the background, a large tree can be seen, its trunk stretching up to the sky.
-
-Image Prompt:
-((Lily)) in the ((forest)) near to a ((home)).\
-Lily is standing in a clearing in the forest, wearing a red dress and a matching red hat,\
-her hands clasped in front of her in excitement.\
-She has a look of wonder on her face as she takes in the beauty of the trees around her.\
-The sun is shining down, casting a warm light through the leaves.\
-In the background, a large tree can be seen, its trunk stretching up to the sky.
-
-Sentences:
-Every day, the child would take a basket and go deep into the forest to find new plants and animals.
-
-Description:
-The child stands in the middle of the forest, with a basket in one hand,\
-looking around with curiosity and a sense of adventure. The sun is setting in the background,\
-painting the sky in a beautiful pink and orange hue. The child wears a light blue dress,\
-a backpack on their back, and looks around, ready to explore the depths of the forest and find new plants and animals.
-
-Image Prompt:
-A ((child)) with ((basket)) is watching ((plants)) and ((animals)) in the ((forest)).\
-The child stands in the middle of the forest, with a basket in one hand,\
-looking around with curiosity and a sense of adventure. The sun is setting in the background,\
-painting the sky in a beautiful pink and orange hue. The child wears a light blue dress,\
-a backpack on their back, and looks around, ready to explore the depths of the forest and find new plants and animals.
-
-Sentences:
-{sentences}
-
-Description:
-{description}
-
-Image Prompt:
-"""
-
-def image_description_formatter(model, sentences, description, prompt = GET_IMAGE_DESCRIPTION):
-    return model.text2text(prompt.format(
-        sentences = sentences, description  = description
-    ))
-
-
+    return new_text.split('.')
 
 ########################################################
 #                                                      #
@@ -215,75 +192,90 @@ def image_description_formatter(model, sentences, description, prompt = GET_IMAG
 ########################################################
 
 
-class TestIllustrateModel:    
-    def __init__(
-        self, 
-        model, 
-        p_entities = ENTITIES, 
-        p_entity_description = GET_ENTITY_DESCRIPTIONS,
-        p_image_description = GET_IMAGE_DESCRIPTION,
-        p_image_formatter = FORMATTER
-    ) -> None:
+class IllustrateModel:
+    def __init__(self, model, descriptions_len = 1) -> None:
         self.model = model
-        self.p_entities = p_entities
-        self.p_entity_description = p_entity_description
-        self.p_image_description = p_image_description
-        self.p_image_formatter = p_image_formatter
-        
+        self.descriptions_len = descriptions_len
         self.logger = '............. {action}'
 
-    def run(self, text, frames, style=''):
+        self.entity_detection = characters_detection
+        self.entity_description = generate_entity_description
+
+    def run(self, text, frames, style='any', frame = 'photo'):
         print(self.logger.format(action = 'init inferences 🏭'))
         
         self.entities = {}
-        entity_list = entities_detection(self.model, text, self.p_entities)
+        self.entity_list = self.entity_detection(self.model, text)
         print(self.logger.format(action = 'the entities was detected 🕵🏽‍♂️'))
 
-        for entity in entity_list:
-            self.entities[entity] = generate_entity_description(self.model, text, entity, self.p_entity_description)
+        for entity in self.entity_list:
+            self.entities[entity] = self.entity_description(self.model, text, entity)
             print(self.logger.format(action = f'the entity {entity} was described ✍🏽'))
 
         for i, f in enumerate(frames):
             print(self.logger.format(action = f'analyzing {i}/{len(frames)} frame 🧐'))
-            image_prompt, _ = self.pipeline(f, text, self.entities, style)
-            yield image_prompt
+            subject, descriptions = self.pipeline(f, text, self.entities)
+            yield self.image_prompt_structure(
+                subject=subject,
+                frame=frame,
+                styles=style,
+                descriptions=descriptions[:self.descriptions_len + 1]
+            )
 
-    def pipeline(self, frame, text, entities: dict = None, style = ''):
+    def pipeline(self, frame, text, entities: dict = None):
+        return 'a cat', []
+
+    def image_prompt_structure(self, subject = '', styles='', frame = '', descriptions=''):
+        return f"A {frame} in the {styles} style of {subject}"
+    
+
+class MultiDescriptionModel(IllustrateModel):    
+
+    def pipeline(self, frame, text, entities: dict = None):
+        descriptions, subject = [], ''
+
         if not entities:
             entities = {}
 
-        entity_list = entities_detection(self.model, frame, self.p_entities)
-
-        for entity in entity_list:
-            if entity not in entities:
-                entities[entity] = generate_entity_description(self.model, text, entity, self.p_entity_description)
-                print(self.logger.format(action = f'the entity {entity} was described ✍🏽'))
-
-        image_description = generate_image_description(self.model, frame, text, self.p_image_description)
+        image_pos_description = generate_image_description(self.model, frame, text)
         print(self.logger.format(action = f'the image description was generated 🤩'))
+        descriptions.append(image_pos_description)
+
+        if self.attention_summary:
+            subject = summary_description(self.model, image_pos_description)
 
         selected_entities = []
         for entity in entities.keys():
-            top, temp = 0, ''
-            for match in re.finditer(entity.lower(), image_description, re.IGNORECASE):
-                i, j = match.span()
-                selected_entities.append((i, entity))
-                temp += image_description[top:i] + f'(({entity}))'
-                top = j
-            
-            
-            if top:
-                image_description = temp + image_description[top:]
-
-        if style:
-            image_description += f' ((({style}))).'
+            if (re.search(entity.lower(), image_pos_description, re.IGNORECASE)):
+                selected_entities.append(entity)
         
-        sett = set()
-        for _, entity in filter(lambda x: x[1] not in sett, sorted(selected_entities)):
-            image_description += '\n' + entities[entity]
-            sett.add(entity)    
+        for entity in self.entity_list:
 
-        # formatted_image_description = image_description_formatter(self.model, frame, image_description, self.p_image_formatter)
+            if entity in selected_entities:
+                descriptions.append(entities[entity])
+
         print(self.logger.format(action = f'the image description was formatted 🙌🏽'))
 
-        return image_description, entities
+        return subject, descriptions
+
+    def image_prompt_structure(self, subject = '', styles='', frame = '', descriptions=''):
+        return f"A {frame} in the {styles} style where {'In Addition, '.join(descriptions)}"
+
+
+
+class WellDescribedModel(IllustrateModel):
+
+    def __init__(self, model, descriptions_len=1, explain = False) -> None:
+        super().__init__(model, descriptions_len)
+
+        self.entity_detection = entities_detection
+        self.explain = explain
+
+    def pipeline(self, frame, text, entities: dict = None):
+        subject = build_semantic_description(self.model, text, entities.values(), frame, explain= self.explain)
+        print(self.logger.format(action = f'the image description was generated 🤩'))
+
+        return subject, []
+
+    def image_prompt_structure(self, subject = '', styles='', frame = '', descriptions=''):
+        return f"A {frame} in the {styles} style of {subject}"

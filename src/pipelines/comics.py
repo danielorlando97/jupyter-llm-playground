@@ -1,5 +1,6 @@
 import re
 from functools import partial
+from typing import Union, Literal
 ########################################################
 #                                                      #
 #          Generate Mainly Story                       #
@@ -99,12 +100,41 @@ Story:
 Answer:
 1-"""
 
-def text_splitter(model, story):
-    splits = '1-' + model.text2text(SPLIT_STORY.format(story = story))
+def text_splitter(model, story, prompt= SPLIT_STORY):
+    splits = '1-' + model.text2text(prompt.format(story = story))
     frames = re.split(r'\d+-\s*', splits.strip())
     return frames[1:]
 
 
+
+RETELL_FOR_CHILDREN = """Here is a story for children and I want to retell it to my kids.
+
+Context: My kids love when I retell them nice story. But they don't like the log sentences. \
+They enjoy when I split the story in short expressions in a way that allows me to make sounds \
+and dramatic pauses between each story segment. So, I need to split the story witch is here as that way
+
+Story:{story}
+Story Segment:
+1-
+"""
+
+def retell_for_children(model, story):
+    return text_splitter(model, story, RETELL_FOR_CHILDREN)
+
+
+ILLUSTRATED_SPLIT = """I have a story for children and I want to make a illustrated book about it. \
+So, I need to split this story in many story segment in a way that each segment express the same \
+idea which I can represent in an image. So, I one sentences can be illustrated by to images this should be divided \
+and If two or more sentences describe the same action or situation that I would use many similar image to describe them \
+they have to be together. But the book have to be easy to read, so I want the minimal story segment per page.
+
+Story:{story}
+Story Segment:
+1-
+"""
+
+def illustrated_split(model, story):
+    return text_splitter(model, story, ILLUSTRATED_SPLIT)
 
 ########################################################
 #                                                      #
@@ -112,9 +142,16 @@ def text_splitter(model, story):
 #                                                      #
 ########################################################
 
+Splitter_Style = Union[None, Literal['for_children'], Literal['illustrated']]
 
-def pipeline(model, prompt):
+def pipeline(model, prompt, splitter_style: Splitter_Style = None):
     story = generate_comic(model, prompt)
-    frames = text_splitter(model, story)
+
+    if splitter_style == 'for_children':
+        frames = retell_for_children(model, story)
+    elif splitter_style == 'illustrated':
+        frames = illustrated_split(model, story)
+    else:
+        frames = text_splitter(model, story)
 
     return story, frames
